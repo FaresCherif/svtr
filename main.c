@@ -141,10 +141,50 @@ int main(void) {
 	while (!quit) {
 		if (fgets(buf,256,inStream)) {
 			cmd = buf[0];
-			switch (cmd) {
-			// TODO: add every command treatment, think about using sscanf on buf to extract arguments
-			default:
-				printf("Unrecognized command: %s\n", buf);
+
+			switch (cmd) 
+			{
+				case 'F' :
+					set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_RUN_DIRECT);
+					set_tacho_command_inx(MY_LEFT_TACHO, TACHO_RUN_DIRECT);
+
+					set_tacho_duty_cycle_sp(MY_LEFT_TACHO,50);
+					set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,50);
+					printf("devant");
+					break;
+				case 'B' :
+					set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_RUN_DIRECT);
+					set_tacho_command_inx(MY_LEFT_TACHO, TACHO_RUN_DIRECT);
+
+					set_tacho_duty_cycle_sp(MY_LEFT_TACHO,-50);
+					set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,-50);
+					printf("derriere");
+					break;
+				case 'R' :
+					set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_RUN_DIRECT);
+					set_tacho_command_inx(MY_LEFT_TACHO, TACHO_RUN_DIRECT);
+
+					set_tacho_duty_cycle_sp(MY_LEFT_TACHO,50);
+					set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,0);
+					printf("droite");
+					break;
+				case 'L' :
+					set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_RUN_DIRECT);
+					set_tacho_command_inx(MY_LEFT_TACHO, TACHO_RUN_DIRECT);
+
+					set_tacho_duty_cycle_sp(MY_LEFT_TACHO,0);
+					set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,50);
+					printf("gauche");
+					break;
+				case 'S' :
+					set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_STOP);
+					set_tacho_command_inx(MY_LEFT_TACHO, TACHO_STOP); 
+					printf("stop");
+					break;
+					
+				// TODO: add every command treatment, think about using sscanf on buf to extract arguments
+				default:
+					printf("Unrecognized command: %s\n", buf);
 			}
 		} else {
 			// Connection closed
