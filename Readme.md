@@ -36,3 +36,8 @@ Il faudra, avant la fonction init_comms, définir les types enregistrement (stru
 
 Noter que reset et target étant des informations reçues de la station sol, nous utilisons des entiers. Cependant la position étant notre représentation interne de la position, elle se doit d'être la plus précise possible, donc nous prendrons des flottants double précision, et pour simplifier les calculs trigonométriques, l'angle y sera représenté en radians. C'est la tâche sendThread qui sera chargée d'opérer les arrondis en entier pour la position, et en degrés pour le cap avant envoi vers la station sol.
 Les autres tâches, une fois la tâche principale comprise, sont relativement évidentes à programmer, et décrites directement sous forme de TODO dans le code.
+
+
+
+
+dead reckoning thread, thread ne va lire que la donner threat et va refrech la position

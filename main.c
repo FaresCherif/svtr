@@ -19,14 +19,29 @@
 #include "communication.h"
 #include "myev3.h"
 #include "workers.h"
+#include "mailbox.h"
 
 // Shared data and mailboxes
 volatile MDD_int MDD_quit;
+volatile MDD_int MDD_power;
+volatile MDD_int MDD_status;
+volatile mailbox mb_command;
+volatile MDD_pos MDD_reset;
+volatile MDD_pos MDD_position;
+
+
 // TODO: declare the rest
+//volatile int power;// declarer ca locallement, mettre ca dans un mdd ( module de donnees ) : MDD_wirte, MDDpower
+pthread_t threadDirectCommand;
+pthread_t threadAutoCommand;
+pthread_t threadDeadReckoning;
+pthread_t threadSend;
 
 
 void init_comms() {
 	MDD_quit = MDD_int_init(0);
+	MDD_power = MDD_int_init(0);
+	MDD_status = MDD_int_init(0);
 	// TODO: initialize the rest
 }
 
@@ -64,8 +79,72 @@ void *sendThread(FILE * outStream) {
  * set_tacho_command_inx (for commands TACHO_STOP and TACHO_RUN_DIRECT),
  * set_tacho_duty_cycle_sp in order to configure the power between -100 and 100
  */
-void *directThread(void*dummy) {
+void *directThread(void*dummy) { 
 	// TODO : this is a bit long of a switch/case structure but it's fun
+
+	int quit=0;
+	int cmd = 0;
+	while (!quit) {
+		printf("direct\n");
+		fflush(stdout); 
+		mb_receive(mb_command, &cmd);
+		int power = MDD_int_read(MDD_power);
+		MDD_int_write(MDD_status,STATUS_DIRECT_MOVE);
+
+		switch (cmd) 
+		{
+			
+			case CMD_FORWARD :
+				set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_RUN_DIRECT);
+				set_tacho_command_inx(MY_LEFT_TACHO, TACHO_RUN_DIRECT);
+
+				set_tacho_duty_cycle_sp(MY_LEFT_TACHO,power);
+				set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,power);
+				printf("devant\n");
+				fflush(stdout); 
+				break;
+			case CMD_BACKWARD :
+				set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_RUN_DIRECT);
+				set_tacho_command_inx(MY_LEFT_TACHO, TACHO_RUN_DIRECT);
+
+				set_tacho_duty_cycle_sp(MY_LEFT_TACHO,-power);
+				set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,-power);
+				printf("derriere\n");
+				fflush(stdout); 
+				break;
+			case CMD_RIGHT :
+				set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_RUN_DIRECT);
+				set_tacho_command_inx(MY_LEFT_TACHO, TACHO_RUN_DIRECT);
+
+				set_tacho_duty_cycle_sp(MY_LEFT_TACHO,power);
+				set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,-power);
+				printf("droite\n");
+				fflush(stdout); 
+				break;
+			case CMD_LEFT :
+				set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_RUN_DIRECT);
+				set_tacho_command_inx(MY_LEFT_TACHO, TACHO_RUN_DIRECT);
+
+				set_tacho_duty_cycle_sp(MY_LEFT_TACHO,-power);
+				set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,power);
+				printf("gauche\n");
+				fflush(stdout); 
+				break;
+			case CMD_STOP :
+				set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_STOP);
+				set_tacho_command_inx(MY_LEFT_TACHO, TACHO_STOP); 
+				printf("stop\n");
+				fflush(stdout); 
+				break;
+				
+			// TODO: add every command treatment, think about using sscanf on buf to extract arguments
+			default:
+				printf("Unrecognized command: %i\n", cmd);
+				
+		}
+		quit = MDD_int_read(MDD_quit);
+	}
+	
 	return 0;
 }
 
@@ -80,6 +159,11 @@ void *directThread(void*dummy) {
  */
 void * deadreckoningThread(void *dummy) {
 	// TODO : all by yourself
+	int quit=0;
+	while (!quit) {
+
+		quit = MDD_int_read(MDD_quit);
+	}
 	return 0;
 }
 
@@ -121,6 +205,9 @@ void * autoThread(void *dummy) {
  */
 int main(void) {
 	char cmd;
+
+
+	mb_command = mb_init();
 	char buf[256];
 	int mode = MODE_DIRECT;
 	FILE *inStream, *outStream;
@@ -138,54 +225,63 @@ int main(void) {
 	}
 	// TODO: run the threads
 	int quit = 0;
+	int commande = 0;
+	int power =0;
+	int x=0;
+	int y=0;
+	int ang=0;
+	pthread_create(&threadDirectCommand, NULL, directThread, NULL);
+	pthread_create(&threadAutoCommand, NULL, autoThread, NULL);
+	pthread_create(&threadDeadReckoning, NULL, deadreckoningThread, NULL);
+
+	MDD_int_write(MDD_status,STATUS_STANDBY);
+
+	//pthread_create(&threadSend, NULL, sendThread,  outStream);
 	while (!quit) {
 		if (fgets(buf,256,inStream)) {
 			cmd = buf[0];
-
 			switch (cmd) 
 			{
-				case 'F' :
-					set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_RUN_DIRECT);
-					set_tacho_command_inx(MY_LEFT_TACHO, TACHO_RUN_DIRECT);
+				case 'r' :
+					printf("init position");
+					sscanf(buf, "r %i %i %i", &x,&y,&ang);
+					printf("%i %i %i\n", x,y,ang);
+					fflush(stdout);
+					break;
 
-					set_tacho_duty_cycle_sp(MY_LEFT_TACHO,50);
-					set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,50);
-					printf("devant");
+				case 'p' :
+					//printf("%i",buf[2]);
+					sscanf(buf, "p %i", &power);
+					printf("%i\n", power);
+					fflush(stdout);
+					MDD_int_write(MDD_power,power);
+					break;
+					// ecrire dans la boite au lettre que la commande 
+					// TODO: add every command treatment, think about using sscanf on buf to extract arguments
+				case 'F' :
+					commande = CMD_FORWARD;
+					mb_send(mb_command, commande);
 					break;
 				case 'B' :
-					set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_RUN_DIRECT);
-					set_tacho_command_inx(MY_LEFT_TACHO, TACHO_RUN_DIRECT);
-
-					set_tacho_duty_cycle_sp(MY_LEFT_TACHO,-50);
-					set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,-50);
-					printf("derriere");
+					commande = CMD_BACKWARD;
+					mb_send(mb_command, commande);
 					break;
 				case 'R' :
-					set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_RUN_DIRECT);
-					set_tacho_command_inx(MY_LEFT_TACHO, TACHO_RUN_DIRECT);
-
-					set_tacho_duty_cycle_sp(MY_LEFT_TACHO,50);
-					set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,0);
-					printf("droite");
+					commande = CMD_RIGHT;
+					mb_send(mb_command, commande);
 					break;
 				case 'L' :
-					set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_RUN_DIRECT);
-					set_tacho_command_inx(MY_LEFT_TACHO, TACHO_RUN_DIRECT);
-
-					set_tacho_duty_cycle_sp(MY_LEFT_TACHO,0);
-					set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,50);
-					printf("gauche");
+					commande = CMD_LEFT;
+					mb_send(mb_command, commande);
 					break;
 				case 'S' :
-					set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_STOP);
-					set_tacho_command_inx(MY_LEFT_TACHO, TACHO_STOP); 
-					printf("stop");
+					commande = CMD_STOP;
+					mb_send(mb_command, commande);
 					break;
-					
-				// TODO: add every command treatment, think about using sscanf on buf to extract arguments
 				default:
 					printf("Unrecognized command: %s\n", buf);
 			}
+
 		} else {
 			// Connection closed
 			quit = 1;
@@ -194,9 +290,16 @@ int main(void) {
 	MDD_int_write(MDD_quit, 1);
 	// TODO: wait for threads termination (pthread_join)
 	fclose(inStream);
+	mb_destroy(mb_command);
 	set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_STOP);
 	set_tacho_command_inx(MY_LEFT_TACHO, TACHO_STOP);
 	ev3_uninit();
 	CloseSockets();
 	return 0;
 }
+
+//auto thread : va en auto a un endroit
+//dead reckonning :  veut mettre à jour la pos du robot ,  lorsqu'il y a un reset, reset la position du robot. position: x,y,orientation
+// thread regarde s'il  y a un reset : si oui il fait un maj en fonction de cette position, ensuite fonction d'odometry dans le fichier worker
+
+//boite noire : entre 2 mutex
