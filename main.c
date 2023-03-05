@@ -28,6 +28,10 @@ volatile MDD_int MDD_status;
 volatile mailbox mb_command;
 volatile MDD_pos MDD_reset;
 volatile MDD_pos MDD_position;
+volatile MDD_pos MDD_target;
+
+
+volatile MDD_int auto_command;
 
 
 // TODO: declare the rest
@@ -44,7 +48,8 @@ void init_comms() {
 	MDD_status = MDD_int_init(0);
 	MDD_position = MDD_pos_init(0.0,0.0,0.0);
 	MDD_reset = MDD_pos_init(0.0,0.0,0.0);
-
+	auto_command = MDD_int_init(0);
+	MDD_target = MDD_pos_init(0.0,0.0,0.0);
 	// TODO: initialize the rest
 }
 
@@ -61,10 +66,20 @@ void init_comms() {
 void *sendThread(FILE * outStream) {
 	int x, y, a;
 	int status;
+	double* position;
 	struct timespec horloge;
 	clock_gettime(CLOCK_REALTIME, &horloge);
 	while (!MDD_int_read(MDD_quit)) {
 		// TODO : complete this
+		position = MDD_pos_read(MDD_position);
+		status = MDD_int_read(MDD_status);
+
+		printf("position : %f %f %f\n",position[0],position[1],position[2]);
+		//fprintf(outStream,"position : %f %f %f\n",position[0],position[1],position[2]);
+		printf("statut : %i\n",status);
+		//fprintf(outStream,"statut : %i",status);
+
+
 		fflush(outStream);
 		add_ms(&horloge, 200);
 		clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &horloge, 0);
@@ -88,11 +103,10 @@ void *directThread(void*dummy) {
 	int quit=0;
 	int cmd = 0;
 	while (!quit) {
-		printf("direct\n");
 		fflush(stdout); 
 		mb_receive(mb_command, &cmd);
 		int power = MDD_int_read(MDD_power);
-		MDD_int_write(MDD_status,STATUS_DIRECT_MOVE);
+		printf("direct\n");
 
 		switch (cmd) 
 		{
@@ -103,6 +117,8 @@ void *directThread(void*dummy) {
 
 				set_tacho_duty_cycle_sp(MY_LEFT_TACHO,power);
 				set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,power);
+				MDD_int_write(MDD_status,STATUS_DIRECT_MOVE);
+
 				printf("devant\n");
 				fflush(stdout); 
 				break;
@@ -112,6 +128,8 @@ void *directThread(void*dummy) {
 
 				set_tacho_duty_cycle_sp(MY_LEFT_TACHO,-power);
 				set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,-power);
+				MDD_int_write(MDD_status,STATUS_DIRECT_MOVE);
+
 				printf("derriere\n");
 				fflush(stdout); 
 				break;
@@ -121,6 +139,9 @@ void *directThread(void*dummy) {
 
 				set_tacho_duty_cycle_sp(MY_LEFT_TACHO,power);
 				set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,-power);
+
+				MDD_int_write(MDD_status,STATUS_DIRECT_MOVE);
+
 				printf("droite\n");
 				fflush(stdout); 
 				break;
@@ -130,12 +151,18 @@ void *directThread(void*dummy) {
 
 				set_tacho_duty_cycle_sp(MY_LEFT_TACHO,-power);
 				set_tacho_duty_cycle_sp(MY_RIGHT_TACHO,power);
+
+				MDD_int_write(MDD_status,STATUS_DIRECT_MOVE);
+
 				printf("gauche\n");
 				fflush(stdout); 
 				break;
 			case CMD_STOP :
 				set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_STOP);
 				set_tacho_command_inx(MY_LEFT_TACHO, TACHO_STOP); 
+
+				MDD_int_write(MDD_status,STATUS_STANDBY);
+
 				printf("stop\n");
 				fflush(stdout); 
 				break;
@@ -172,17 +199,18 @@ void * deadreckoningThread(void *dummy) {
 	deadRWorkerInit();
 	int quit=0;
 	struct timespec horloge;
-	double* position;;
-
+	double* position;
+	int resetPositionDirty;
 	double x;
 	double y;
 	double ang;
 
 	while (!quit) {
-		if(MDD_reset->dirty==1){
-			printf("being reset %f %f %f\n",MDD_reset->x,MDD_reset->y,MDD_reset->ang);
+		resetPositionDirty = MDD_pos_read2(MDD_reset,&x,&y,&ang);
+		if(resetPositionDirty==1){ 
+			printf("being reset %f %f %f\n",x,y,ang);
 			fflush(stdout); 
-			MDD_reset->dirty=0;
+			MDD_pos_write(MDD_position,x,y,ang);
 		}
 		position = MDD_pos_read(MDD_position);
 
@@ -190,7 +218,7 @@ void * deadreckoningThread(void *dummy) {
 		MDD_pos_write(MDD_position,x,y,radtodeg(ang));
 
 		//printf("val : %f %f %f\n",x,y,ang);
-		printf("nouvelle pos : %f %f %f\n",position[0],position[1],position[2]);
+		//printf("nouvelle pos : %f %f %f\n",position[0],position[1],position[2]);
 
 		fflush(stdout); 
 
@@ -209,6 +237,68 @@ void * deadreckoningThread(void *dummy) {
  */
 void * autoThread(void *dummy) {
 	// TODO : keep this as the bonus question, at the end
+	int quit=0;
+	struct timespec horloge;
+	int commande;
+	int newTarget;
+	double xTarget,yTarget,angTarget;
+	double* position;
+	bool goingToTarget = false;
+	double erreur;
+	int power;
+
+	while (!quit) {
+		power = MDD_int_read(MDD_power);
+
+		newTarget = MDD_pos_read2(MDD_target,&xTarget,&yTarget,&angTarget);
+		//printf("target : %f %f\n",xTarget,yTarget);
+		if(newTarget == 1){
+			goingToTarget = true;
+			printf("new target\n");
+			position = MDD_pos_read(MDD_position);
+			erreur=deadreckoningGoTo(position[0],position[1],degtorad(position[2]),xTarget,yTarget,power); // necessaire pour avoir une premiere erreur
+		}
+
+		commande = MDD_int_read(auto_command);
+
+		if(commande!=CMD_STOP){
+			if(goingToTarget == true){
+				MDD_int_write(MDD_status,STATUS_AUTO_MOVE);
+
+				//printf("going to target\n");
+
+				position = MDD_pos_read(MDD_position);
+				//printf("x difference %f\n",abs(xTarget-position[0]));
+				//printf("y difference %f\n",abs(yTarget-position[1]));
+				//printf("position : %f %f %f\n",position[0],position[1],position[2]);
+				//printf("target : %f %f\n",xTarget,yTarget);
+				//printf("difference %f\n",difference);
+				if( erreur > 2.0 ){
+					erreur=deadreckoningGoTo(position[0],position[1],degtorad(position[2]),xTarget,yTarget,power);
+				}
+				else{
+					goingToTarget = false; // taget atteinte
+					MDD_int_write(MDD_status,STATUS_STANDBY);
+				}
+			}
+		}
+		else{ // if stop received or mode changed
+
+			if(goingToTarget){ // if stop just received
+				//deadreckoningGoTo(position[0],position[1],degtorad(position[2]),position[0],position[1],power); // to cut 
+				set_tacho_command_inx(MY_RIGHT_TACHO, TACHO_STOP);
+				set_tacho_command_inx(MY_LEFT_TACHO, TACHO_STOP); 
+				MDD_int_write(MDD_status,STATUS_STANDBY);
+
+				goingToTarget = false; // cut when going into manual mode
+			}
+		}
+		fflush(stdout); 
+
+		quit = MDD_int_read(MDD_quit);
+		add_ms(&horloge, 50);
+		clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &horloge, 0);
+	}
 	return 0;
 }
 
@@ -265,13 +355,14 @@ int main(void) {
 	int x;
 	int y;
 	int ang;
+	int commandeAuto;
 	pthread_create(&threadDirectCommand, NULL, directThread, NULL);
 	pthread_create(&threadAutoCommand, NULL, autoThread, NULL);
 	pthread_create(&threadDeadReckoning, NULL, deadreckoningThread, NULL);
 
 	MDD_int_write(MDD_status,STATUS_STANDBY);
 
-	//pthread_create(&threadSend, NULL, sendThread,  outStream);
+	pthread_create(&threadSend, NULL, sendThread,  outStream);
 	while (!quit) {
 		if (fgets(buf,256,inStream)) {
 			cmd = buf[0];
@@ -285,8 +376,32 @@ int main(void) {
 					break;
 				
 				case 'm' :
-					printf("mode");
+					sscanf(buf, "m %i", &commandeAuto);
+					printf("commande auto : %i\n",commandeAuto);
 
+					
+					if(commandeAuto==0){
+						printf("commande auto : stop\n");
+						MDD_int_write(auto_command,CMD_STOP);
+						MDD_pos_read(MDD_target); // set the dirty of the auto to 0 when in the direct mode
+					}
+					
+					else if (commandeAuto == 1)
+					{
+						printf("commande auto : start\n");
+						MDD_int_write(auto_command,CMD_START);
+					}
+					
+					fflush(stdout);
+					break;
+				
+				case 'g' :
+					sscanf(buf, "g %i %i", &x,&y);
+					printf("targer position : %f %f\n", (double)x,(double)y);
+					fflush(stdout);
+					MDD_int_write(auto_command,CMD_START);
+					MDD_pos_write(MDD_target,(double)x,(double)y,0.0);
+					break;
 
 				case 'p' :
 					//printf("%i",buf[2]);
@@ -316,6 +431,7 @@ int main(void) {
 				case 'S' :
 					commande = CMD_STOP;
 					mb_send(mb_command, commande);
+					MDD_int_write(auto_command,CMD_STOP);
 					break;
 				
 				case 'q' :

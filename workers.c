@@ -113,6 +113,7 @@ double deadreckoningGoTo(const double x, const double y, const double a, const d
 	set_tacho_duty_cycle_sp(MY_LEFT_TACHO,cmdL);
 	set_tacho_command_inx(MY_RIGHT_TACHO,TACHO_RUN_DIRECT);
 	set_tacho_command_inx(MY_LEFT_TACHO,TACHO_RUN_DIRECT);
+	
 	return error;
 }
 
