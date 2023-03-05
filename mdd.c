@@ -69,7 +69,7 @@ int MDD_int_read2(MDD_int mdd,int *val) {
 
 
 
-MDD_pos MDD_pos_init(const int x,const int y,const int ang) {
+MDD_pos MDD_pos_init(const double x,const double y,const double ang) {
 	MDD_pos m=(MDD_pos)malloc(sizeof(struct s_MDD_pos));
 	m->x=x;
 	m->x=y;
@@ -79,28 +79,27 @@ MDD_pos MDD_pos_init(const int x,const int y,const int ang) {
 	return m;
 }
 
-void MDD_pos_write(MDD_pos mdd, const int x,const int y,const int ang){
+void MDD_pos_write(MDD_pos mdd, const double x,const double y,const double ang){
 	pthread_mutex_lock(&(mdd->mutex));
 	mdd->x=x;
-	mdd->x=y;
-	mdd->x=ang;
+	mdd->y=y;
+	mdd->ang=ang;
 	mdd->dirty=1;
 	pthread_mutex_unlock(&(mdd->mutex));
 }
 
-int* MDD_pos_read(MDD_pos mdd){
-	int* pos;
-
+double* MDD_pos_read(MDD_pos mdd){
+	static double pos[3];
 	pthread_mutex_lock(&(mdd->mutex));
-	pos[0]=mdd->x;
-	pos[1]=mdd->y;
-	pos[2]=mdd->ang;
+	pos[0] = mdd->x;
+	pos[1] = mdd->y;
+	pos[2] = mdd->ang;
 	mdd->dirty=0;
 	pthread_mutex_unlock(&(mdd->mutex));
 	return pos;
 }
 
-int MDD_pos_read2(MDD_pos mdd,int *x,int *y,int *ang) {
+int MDD_pos_read2(MDD_pos mdd,double *x,double *y,double *ang) {
 	int dirty;
 	pthread_mutex_lock(&(mdd->mutex));
 	*x=mdd->x;
@@ -111,5 +110,4 @@ int MDD_pos_read2(MDD_pos mdd,int *x,int *y,int *ang) {
 	mdd->dirty=0;
 	pthread_mutex_unlock(&(mdd->mutex));
 	return dirty;
-
 }

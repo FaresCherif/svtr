@@ -42,6 +42,9 @@ void init_comms() {
 	MDD_quit = MDD_int_init(0);
 	MDD_power = MDD_int_init(0);
 	MDD_status = MDD_int_init(0);
+	MDD_position = MDD_pos_init(0.0,0.0,0.0);
+	MDD_reset = MDD_pos_init(0.0,0.0,0.0);
+
 	// TODO: initialize the rest
 }
 
@@ -148,6 +151,13 @@ void *directThread(void*dummy) {
 	return 0;
 }
 
+double degtorad(double deg){
+	return deg * M_PI / 180.0;
+}
+
+double radtodeg(double rad){
+	return rad * 180.0 / M_PI;
+}
 /**
  * deadrecknoning thread, should first initialize (see deadRWorkerInit)
  * and then periodically, until quit:
@@ -159,10 +169,35 @@ void *directThread(void*dummy) {
  */
 void * deadreckoningThread(void *dummy) {
 	// TODO : all by yourself
+	deadRWorkerInit();
 	int quit=0;
+	struct timespec horloge;
+	double* position;;
+
+	double x;
+	double y;
+	double ang;
+
 	while (!quit) {
+		if(MDD_reset->dirty==1){
+			printf("being reset %f %f %f\n",MDD_reset->x,MDD_reset->y,MDD_reset->ang);
+			fflush(stdout); 
+			MDD_reset->dirty=0;
+		}
+		position = MDD_pos_read(MDD_position);
+
+		deadRWorker(position[0],position[1],degtorad(position[2]),&x,&y,&ang);
+		MDD_pos_write(MDD_position,x,y,radtodeg(ang));
+
+		//printf("val : %f %f %f\n",x,y,ang);
+		printf("nouvelle pos : %f %f %f\n",position[0],position[1],position[2]);
+
+		fflush(stdout); 
 
 		quit = MDD_int_read(MDD_quit);
+		
+		add_ms(&horloge, 30);
+		clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &horloge, 0);
 	}
 	return 0;
 }
@@ -227,9 +262,9 @@ int main(void) {
 	int quit = 0;
 	int commande = 0;
 	int power =0;
-	int x=0;
-	int y=0;
-	int ang=0;
+	int x;
+	int y;
+	int ang;
 	pthread_create(&threadDirectCommand, NULL, directThread, NULL);
 	pthread_create(&threadAutoCommand, NULL, autoThread, NULL);
 	pthread_create(&threadDeadReckoning, NULL, deadreckoningThread, NULL);
@@ -243,11 +278,15 @@ int main(void) {
 			switch (cmd) 
 			{
 				case 'r' :
-					printf("init position");
 					sscanf(buf, "r %i %i %i", &x,&y,&ang);
-					printf("%i %i %i\n", x,y,ang);
+					printf("init position : %f %f %f\n", (double)x,(double)y,(double)ang);
 					fflush(stdout);
+					MDD_pos_write(MDD_reset,(double)x,(double)y,(double)ang);
 					break;
+				
+				case 'm' :
+					printf("mode");
+
 
 				case 'p' :
 					//printf("%i",buf[2]);
@@ -277,6 +316,10 @@ int main(void) {
 				case 'S' :
 					commande = CMD_STOP;
 					mb_send(mb_command, commande);
+					break;
+				
+				case 'q' :
+					MDD_int_write(MDD_quit, 1);
 					break;
 				default:
 					printf("Unrecognized command: %s\n", buf);

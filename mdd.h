@@ -55,9 +55,9 @@ int MDD_int_read2(MDD_int mdd,int *val);
 
 
 typedef struct s_MDD_pos {
-	int x;
-	int y;
-	int ang;
+	double x;
+	double y;
+	double ang;
 	int dirty;
 	pthread_mutex_t mutex;
 } * MDD_pos;
@@ -69,7 +69,7 @@ typedef struct s_MDD_pos {
  *\param ang[in] initial value ang of the shared data
  *\return the new shared pos, memory allocation is done inside the function
  */
-MDD_pos MDD_pos_init(const int x,const int y,const int ang);
+MDD_pos MDD_pos_init(const double x,const double y,const double ang);
 
 /**
  * Writes in a shared int
@@ -79,7 +79,7 @@ MDD_pos MDD_pos_init(const int x,const int y,const int ang);
  *\param ang[in] ang to write in the shared data
  * Side effect: shared pos is considered dirty until next reading
  */
-void MDD_pos_write(MDD_pos mdd, const int x,const int y,const int ang);
+void MDD_pos_write(MDD_pos mdd, const double x,const double y,const double ang);
 
 /**
  * Reads in a shared int
@@ -87,7 +87,7 @@ void MDD_pos_write(MDD_pos mdd, const int x,const int y,const int ang);
  *\return value of the shared data
  * Side effect: shared pos is now considered clean
  */
-int* MDD_pos_read(MDD_pos mdd);
+double* MDD_pos_read(MDD_pos mdd);
 
 /**
  * Reads in a shared int, while returning if it was dirty
@@ -98,6 +98,6 @@ int* MDD_pos_read(MDD_pos mdd);
  *\return  1 if the shared data was modified since last reading (i.e., dirty), 0 else
  * Side effect: shared pos is now considered clean
  */
-int MDD_pos_read2(MDD_pos mdd,int *x,int *y,int *ang);
+int MDD_pos_read2(MDD_pos mdd,double *x,double *y,double *ang);
 
 #endif /* MDD_H_ */
